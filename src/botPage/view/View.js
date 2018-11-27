@@ -1,14 +1,14 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { observer as globalObserver } from 'binary-common-utils/lib/observer';
+import 'jquery-ui/ui/widgets/dialog';
+import { observer as globalObserver } from '../../common/utils/observer';
 import {
     getTokenList,
     removeAllTokens,
     get as getStorage,
     set as setStorage,
     getToken,
-} from 'binary-common-utils/lib/storageManager';
-import 'jquery-ui/ui/widgets/dialog';
+} from '../../common/utils/storageManager';
 import _Blockly from './blockly';
 import { translate } from '../../common/i18n';
 import Save from './Dialogs/Save';
@@ -21,19 +21,48 @@ import { symbolPromise } from './shared';
 import logHandler from './logger';
 import Tour from './tour';
 import OfficialVersionWarning from './react-components/OfficialVersionWarning';
+import ServerTime from './react-components/HeaderWidgets';
+import NetworkMonitor from './NetworkMonitor';
 import LogTable from './LogTable';
 import TradeInfoPanel from './TradeInfoPanel';
-import { logoutAllTokens, getOAuthURL, generateLiveApiInstance, AppConstants } from '../../common/appId';
+import {
+    logoutAllTokens,
+    getOAuthURL,
+    generateLiveApiInstance,
+    AppConstants,
+    addTokenIfValid,
+    isProduction,
+} from '../../common/appId';
 import { updateConfigCurrencies } from '../common/const';
 
 let realityCheckTimeout;
 
 const api = generateLiveApiInstance();
 
+new NetworkMonitor(api, $('#server-status')); // eslint-disable-line no-new
+
+api.send({ website_status: '1', subscribe: 1 });
+
+api.events.on('website_status', response => {
+    $('.web-status').trigger('notify-hide');
+    const { message } = response.website_status;
+    if (message) {
+        $.notify(message, {
+            position : 'bottom left',
+            autoHide : false,
+            className: 'warn web-status',
+        });
+    }
+});
+
+api.send({ time: '1' }).then(response => {
+    ReactDOM.render(<ServerTime startTime={response.time} />, $('#server-time')[0]);
+});
+
 api.events.on('balance', response => {
     const { balance: { balance: b, currency } } = response;
 
-    const balance = roundBalance({ currency, balance: b });
+    const balance = (+roundBalance({ currency, balance: b })).toLocaleString(getLanguage().replace('_', '-'));
     $('.topMenuBalance').text(`${balance} ${currency}`);
 });
 
@@ -72,23 +101,24 @@ const stopRealityCheck = () => {
     realityCheckTimeout = null;
 };
 
-const realityCheckInterval = () => {
+const realityCheckInterval = stopCallback => {
     realityCheckTimeout = setInterval(() => {
         const now = parseInt(new Date().getTime() / 1000);
         const checkTime = +getStorage('realityCheckTime');
         if (checkTime && now >= checkTime) {
             showRealityCheck();
             stopRealityCheck();
+            stopCallback();
         }
     }, 1000);
 };
 
-const startRealityCheck = (time, token) => {
+const startRealityCheck = (time, token, stopCallback) => {
     stopRealityCheck();
     if (time) {
         const start = parseInt(new Date().getTime() / 1000) + time * 60;
         setStorage('realityCheckTime', start);
-        realityCheckInterval();
+        realityCheckInterval(stopCallback);
     } else {
         const tokenObj = getToken(token);
         if (tokenObj.hasRealityCheck) {
@@ -96,7 +126,7 @@ const startRealityCheck = (time, token) => {
             if (!checkTime) {
                 showRealityCheck();
             } else {
-                realityCheckInterval();
+                realityCheckInterval(stopCallback);
             }
         }
     }
@@ -240,8 +270,11 @@ export default class View {
                     updateTokenList();
                     this.blockly = new _Blockly();
                     this.blockly.initPromise.then(() => {
+                        document
+                            .getElementById('contact-us')
+                            .setAttribute('href', `https://www.binary.com/${getLanguage()}/contact.html`);
                         this.setElementActions();
-                        initRealityCheck();
+                        initRealityCheck(() => $('#stopButton').triggerHandler('click'));
                         applyToolboxPermissions();
                         renderReactComponents();
                         if (!getTokenList().length) updateLogo();
@@ -330,16 +363,19 @@ export default class View {
             this.stop();
         };
 
+        const removeTokens = () => {
+            logoutAllTokens().then(() => {
+                updateTokenList();
+                globalObserver.emit('ui.log.info', translate('Logged you out!'));
+                clearRealityCheck();
+                clearActiveTokens();
+                window.location.reload();
+            });
+        };
         const logout = () => {
             showReloadPopup()
                 .then(() => {
-                    logoutAllTokens().then(() => {
-                        updateTokenList();
-                        globalObserver.emit('ui.log.info', translate('Logged you out!'));
-                        clearRealityCheck();
-                        clearActiveTokens();
-                        window.location.reload();
-                    });
+                    removeTokens();
                 })
                 .catch(() => {});
         };
@@ -431,8 +467,13 @@ export default class View {
             $('#files').click();
         });
 
-        $('#logout, #logout-reality-check').click(() => {
+        $('#logout').click(() => {
             logout();
+            hideRealityCheck();
+        });
+
+        $('#logout-reality-check').click(() => {
+            removeTokens();
             hideRealityCheck();
         });
 
@@ -440,7 +481,7 @@ export default class View {
             const time = parseInt($('#realityDuration').val());
             if (time >= 10 && time <= 60) {
                 hideRealityCheck();
-                startRealityCheck(time);
+                startRealityCheck(time, null, () => $('#stopButton').triggerHandler('click'));
             } else {
                 $('#rc-err').show();
             }
@@ -480,6 +521,7 @@ export default class View {
                 .first()
                 .attr('value');
             const tokenObj = getToken(token);
+            initRealityCheck(() => $('#stopButton').triggerHandler('click'));
             if (tokenObj && tokenObj.hasTradeLimitation) {
                 limits.getLimits().then(startBot);
             } else {
@@ -499,8 +541,13 @@ export default class View {
         $('.login-id-list').on('click', 'a', e => {
             showReloadPopup()
                 .then(() => {
-                    setStorage(AppConstants.STORAGE_ACTIVE_TOKEN, $(e.currentTarget).attr('value'));
-                    window.location.reload();
+                    const activeToken = $(e.currentTarget).attr('value');
+                    const tokenList = getTokenList();
+                    setStorage('tokenList', '');
+                    addTokenIfValid(activeToken, tokenList).then(() => {
+                        setStorage(AppConstants.STORAGE_ACTIVE_TOKEN, activeToken);
+                        window.location.reload();
+                    });
                 })
                 .catch(() => {});
         });
@@ -534,6 +581,12 @@ export default class View {
         this.blockly.stop();
     }
     addEventHandlers() {
+        window.addEventListener('storage', e => {
+            window.onbeforeunload = null;
+            if (e.key === 'activeToken' && !e.newValue) window.location.reload();
+            if (e.key === 'realityCheckTime') hideRealityCheck();
+        });
+
         globalObserver.register('Error', error => {
             $('#runButton').prop('disabled', false);
             if (error.error && error.error.error.code === 'InvalidToken') {
@@ -563,12 +616,13 @@ export default class View {
     }
 }
 
-function initRealityCheck() {
+function initRealityCheck(stopCallback) {
     startRealityCheck(
         null,
         $('.account-id')
             .first()
-            .attr('value')
+            .attr('value'),
+        stopCallback
     );
 }
 function renderReactComponents() {
@@ -576,11 +630,7 @@ function renderReactComponents() {
     ReactDOM.render(
         <OfficialVersionWarning
             show={
-                !(
-                    typeof window.location !== 'undefined' &&
-                    window.location.host === 'bot.binary.com' &&
-                    window.location.pathname === '/bot.html'
-                )
+                !(typeof window.location !== 'undefined' && isProduction() && window.location.pathname === '/bot.html')
             }
         />,
         $('#footer')[0]

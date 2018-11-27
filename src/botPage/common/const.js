@@ -1,5 +1,8 @@
 import { translate } from '../../common/i18n';
 import { generateLiveApiInstance } from '../../common/appId';
+import { load as loadLang } from '../../common/lang';
+
+loadLang();
 
 const CRYPTO_CURRENCIES = ['BTC', 'ETH', 'LTC', 'BCH'];
 
@@ -41,7 +44,6 @@ const config = {
             [translate('Severe error'), 'severe-error'],
         ],
     },
-
     opposites: {
         RISEFALL: [
             {
@@ -123,6 +125,22 @@ const config = {
                 DIGITUNDER: translate('Under'),
             },
         ],
+        HIGHLOWTICKS: [
+            {
+                TICKHIGH: translate('High Tick'),
+            },
+            {
+                TICKLOW: translate('Low Tick'),
+            },
+        ],
+        RESET: [
+            {
+                RESETCALL: translate('Reset Call'),
+            },
+            {
+                RESETPUT: translate('Reset Put'),
+            },
+        ],
     },
     barrierTypes: [['+', '+'], ['-', '-']],
     ohlcFields  : [
@@ -134,18 +152,18 @@ const config = {
     ],
     candleIntervals: [
         [translate('Default'), 'default'],
-        ['1 minute', '60'],
-        ['2 minutes', '120'],
-        ['3 minutes', '180'],
-        ['5 minutes', '300'],
-        ['10 minutes', '600'],
-        ['15 minutes', '900'],
-        ['30 minutes', '1800'],
-        ['1 hour', '3600'],
-        ['2 hours', '7200'],
-        ['4 hours', '14400'],
-        ['8 hours', '28800'],
-        ['1 day', '86400'],
+        [translate('1 minute'), '60'],
+        [translate('2 minutes'), '120'],
+        [translate('3 minutes'), '180'],
+        [translate('5 minutes'), '300'],
+        [translate('10 minutes'), '600'],
+        [translate('15 minutes'), '900'],
+        [translate('30 minutes'), '1800'],
+        [translate('1 hour'), '3600'],
+        [translate('2 hours'), '7200'],
+        [translate('4 hours'), '14400'],
+        [translate('8 hours'), '28800'],
+        [translate('1 day'), '86400'],
     ],
     mainBlocks   : ['trade', 'before_purchase', 'after_purchase', 'during_purchase'],
     durationTypes: {
@@ -167,6 +185,12 @@ const config = {
             [translate('Minutes'), 'm'],
             [translate('Hours'), 'h'],
         ],
+        RESET: [
+            [translate('Ticks'), 't'],
+            [translate('Seconds'), 's'],
+            [translate('Minutes'), 'm'],
+            [translate('Hours'), 'h'],
+        ],
         TOUCHNOTOUCH  : [[translate('Ticks'), 't'], [translate('Minutes'), 'm'], [translate('Hours'), 'h']],
         ENDSINOUT     : [[translate('Minutes'), 'm'], [translate('Hours'), 'h']],
         STAYSINOUT    : [[translate('Minutes'), 'm'], [translate('Hours'), 'h']],
@@ -174,8 +198,9 @@ const config = {
         MATCHESDIFFERS: [[translate('Ticks'), 't']],
         EVENODD       : [[translate('Ticks'), 't']],
         OVERUNDER     : [[translate('Ticks'), 't']],
+        HIGHLOWTICKS  : [[translate('Ticks'), 't']],
     },
-    hasPrediction         : ['MATCHESDIFFERS', 'OVERUNDER'],
+    hasPrediction         : ['MATCHESDIFFERS', 'OVERUNDER', 'HIGHLOWTICKS'],
     hasBarrierOffset      : ['HIGHERLOWER', 'TOUCHNOTOUCH', 'ENDSINOUT', 'STAYSINOUT'],
     hasSecondBarrierOffset: ['ENDSINOUT', 'STAYSINOUT'],
     conditionsCategory    : {
@@ -185,6 +210,8 @@ const config = {
         staysinout  : ['staysinout'],
         asian       : ['asians'],
         digits      : ['matchesdiffers', 'evenodd', 'overunder'],
+        highlowticks: ['highlowticks'],
+        reset       : ['reset'],
     },
     conditionsCategoryName: {
         callput     : translate('Up/Down'),
@@ -193,6 +220,8 @@ const config = {
         touchnotouch: translate('Touch/No Touch'),
         endsinout   : translate('Ends In/Out'),
         staysinout  : translate('Stays In/Goes Out'),
+        highlowticks: translate('High/Low Ticks'),
+        reset       : translate('Reset Call/Reset Put'),
     },
     conditions: [
         'risefall',

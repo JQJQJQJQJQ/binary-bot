@@ -1,5 +1,5 @@
-import { parseQueryString } from 'binary-common-utils/lib/tools';
-import { set as setStorage, get as getStorage } from 'binary-common-utils/lib/storageManager';
+import { parseQueryString } from '../common/utils/tools';
+import { set as setStorage, get as getStorage } from '../common/utils/storageManager';
 import { supportedLanguages, translate, init } from './i18n';
 
 export const getLanguage = () => {
@@ -19,6 +19,7 @@ const addUiLang = () => {
 };
 
 export const load = () => {
+    if (typeof $ !== 'function') return; // Adding this check to skip unit test
     const lang = getLanguage();
 
     $('#select_language li:not(:first)').click(function click() {

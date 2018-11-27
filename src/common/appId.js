@@ -1,4 +1,3 @@
-import { parseQueryString } from 'binary-common-utils/lib/tools';
 import { LiveApi } from 'binary-live-api';
 import {
     addToken,
@@ -7,24 +6,42 @@ import {
     removeAllTokens,
     get as getStorage,
     set as setStorage,
-} from 'binary-common-utils/lib/storageManager';
+} from '../common/utils/storageManager';
+import { parseQueryString } from '../common/utils/tools';
 import { getLanguage } from './lang';
-
-const addAllTokens = tokenList => Promise.all(tokenList.map(token => addTokenIfValid(token)));
+import AppIdMap from './appIdResolver';
 
 export const AppConstants = Object.freeze({
     STORAGE_ACTIVE_TOKEN: 'activeToken',
 });
 
+const hostName = document.location.hostname;
+
+const queryToObjectArray = queryStr => {
+    const tokens = [];
+    Object.keys(queryStr).forEach(o => {
+        if (!/\d$/.test(o)) return;
+        const index = parseInt(o.slice(-1));
+        let key = o.slice(0, -1);
+        key = key === 'acct' ? 'accountName' : key; // Make it consistent with storageManage naming
+        if (index <= tokens.length) {
+            tokens[index - 1][key] = queryStr[o];
+        } else {
+            tokens.push({});
+            tokens[index - 1][key] = queryStr[o];
+        }
+    });
+    return tokens;
+};
+
 export const oauthLogin = (done = () => 0) => {
     const queryStr = parseQueryString();
-    let tokenList = [];
-    tokenList = Object.keys(queryStr)
-        .map(r => (r.indexOf('token') === 0 ? queryStr[r] : null))
-        .filter(r => r);
-    if (tokenList.length) {
+
+    const tokenObjectList = queryToObjectArray(queryStr);
+
+    if (tokenObjectList.length) {
         $('#main').hide();
-        addAllTokens(tokenList).then(() => {
+        addTokenIfValid(tokenObjectList[0].token, tokenObjectList).then(() => {
             const accounts = getTokenList();
             if (accounts.length) {
                 setStorage(AppConstants.STORAGE_ACTIVE_TOKEN, accounts[0].token);
@@ -53,10 +70,23 @@ const isRealAccount = () => {
     return isReal;
 };
 
+const getDomainAppId = () => AppIdMap[hostName];
+
 export const getDefaultEndpoint = () => ({
     url  : isRealAccount() ? 'green.binaryws.com' : 'blue.binaryws.com',
-    appId: getStorage('config.default_app_id') || 1169,
+    appId: getStorage('config.default_app_id') || getDomainAppId() || 1169,
 });
+
+export const isProduction = () => hostName.replace(/^www./, '') in AppIdMap;
+
+const getExtension = () => hostName.split('.').slice(-1)[0];
+
+const generateOAuthDomain = () => {
+    if (isProduction()) {
+        return `oauth.binary.${getExtension()}`;
+    }
+    return 'oauth.binary.com';
+};
 
 export const getServerAddressFallback = () => getCustomEndpoint().url || getDefaultEndpoint().url;
 
@@ -67,12 +97,12 @@ export const getWebSocketURL = () => `wss://${getServerAddressFallback()}/websoc
 export const generateWebSocketURL = serverUrl => `wss://${serverUrl}/websockets/v3`;
 
 export const getOAuthURL = () =>
-    `https://${getServerAddressFallback()}/oauth2/authorize?app_id=${getAppIdFallback()}&l=${getLanguage().toUpperCase()}`;
+    `https://${generateOAuthDomain()}/oauth2/authorize?app_id=${getAppIdFallback()}&l=${getLanguage().toUpperCase()}`;
 
 const options = {
     apiUrl   : getWebSocketURL(),
     websocket: typeof WebSocket === 'undefined' ? require('ws') : undefined, // eslint-disable-line global-require
-    language : getStorage('lang') || 'en',
+    language : getLanguage().toUpperCase(),
     appId    : getAppIdFallback(),
 };
 
@@ -80,7 +110,7 @@ export const generateLiveApiInstance = () => new LiveApi(options);
 
 export const generateTestLiveApiInstance = overrideOptions => new LiveApi(Object.assign({}, options, overrideOptions));
 
-export async function addTokenIfValid(token) {
+export async function addTokenIfValid(token, tokenObjectList) {
     const api = generateLiveApiInstance();
     try {
         const { authorize } = await api.authorize(token);
@@ -89,8 +119,20 @@ export async function addTokenIfValid(token) {
             lcName
         );
         addToken(token, authorize, !!hasRealityCheck, ['iom', 'malta'].includes(lcName) && authorize.country === 'gb');
+
+        const { account_list: accountList } = authorize;
+        if (accountList.length > 1) {
+            tokenObjectList.forEach(tokenObject => {
+                if (tokenObject.token !== token) {
+                    const account = accountList.filter(o => o.loginid === tokenObject.accountName);
+                    if (account.length) {
+                        addToken(tokenObject.token, account[0], false, false);
+                    }
+                }
+            });
+        }
     } catch (e) {
-        removeToken(token);
+        removeToken(tokenObjectList[0].token);
         throw e;
     }
     return api.disconnect();

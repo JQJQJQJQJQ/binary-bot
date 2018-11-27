@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import { observer as globalObserver } from 'binary-common-utils/lib/observer';
+import { observer as globalObserver } from '../../../common/utils/observer';
 import { translate } from '../../../common/i18n';
 import Summary from './Summary';
 import TradeTable from './TradeTable';
@@ -26,7 +26,7 @@ const activateStage = index => {
 class AnimateTrade extends Component {
     constructor() {
         super();
-        this.state = {};
+        this.state = { stopMessage: `${translate('Bot is stopped')}.` };
     }
     componentWillMount() {
         globalObserver.register('bot.stop', () => {
@@ -38,7 +38,6 @@ class AnimateTrade extends Component {
         $('#runButton').click(() => {
             $('.stage-tooltip.top:eq(0)').removeClass('active');
             resetAnimation();
-            this.setState({ stopMessage: `${translate('Bot is stopping')}...` });
             globalObserver.register('contract.status', contractStatus => {
                 this.animateStage(contractStatus);
             });
@@ -46,6 +45,7 @@ class AnimateTrade extends Component {
     }
     animateStage(contractStatus) {
         if (contractStatus.id === 'contract.purchase_sent') {
+            this.setState({ stopMessage: `${translate('Bot is stopping')}...` });
             resetAnimation();
             activateStage(0);
             this.setState({ buy_price: contractStatus.data });

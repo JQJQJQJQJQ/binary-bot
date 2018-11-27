@@ -1,4 +1,4 @@
-import { getUTCTime } from 'binary-common-utils/lib/tools';
+import { getUTCTime } from '../../common/utils/tools';
 import { translate } from '../../common/i18n';
 import { roundBalance } from '../common/tools';
 import { notify } from './broadcast';
@@ -17,8 +17,13 @@ export const tradeOptionToProposal = tradeOption =>
         amount       : roundBalance({ currency: tradeOption.currency, balance: tradeOption.amount }),
         contract_type: type,
         ...(tradeOption.prediction !== undefined && {
-            barrier: tradeOption.prediction,
+            selected_tick: tradeOption.prediction,
         }),
+        ...(type !== 'TICKLOW' &&
+            type !== 'TICKHIGH' &&
+            tradeOption.prediction !== undefined && {
+                barrier: tradeOption.prediction,
+            }),
         ...(tradeOption.barrierOffset !== undefined && {
             barrier: castBarrierToString(tradeOption.barrierOffset),
         }),
